@@ -3,7 +3,6 @@
 
 #include <iostream>
 
-
 #include <Windows.h>
 
 #include <boost/multiprecision/cpp_dec_float.hpp>
@@ -30,7 +29,7 @@ extern "C" void createHannCoeff(int tapNum, long long* dest, long long scale)
 	{
 
 		cpp_dec_float_100 piq = pi<cpp_dec_float_100>();
-		cpp_dec_float_100 x = (piq * i) / 4;
+		cpp_dec_float_100 x = (piq * i) / 8;   // 2pi *  (1/16)
 
 		//float128 coeff = (float128)1.0 / (piq * i) * sin(x);
 		cpp_dec_float_100 coeff = 1 / (piq * i) * sin(x);
@@ -62,7 +61,7 @@ static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 	//left = left >> 12; // 12 is OK for scale 2^30 & 63tap :: <16bit> 30bit - 2bit (max 0.25) - 12 = 32   //// 2 ^ 30
 	//0x20000000 30bit 4bit
 	// 4095 : 
-	int shift = SCALE_SHIFT+1;
+	int shift = SCALE_SHIFT;
 
 	if (left > 0)
 	{
@@ -92,121 +91,142 @@ static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 
 int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, int* dest)
 {
-	int mid = (tapNum + 1) / 2 - 1; // e.g  15 for 31tap,  63 for 127tap
-
-
 	for (unsigned int i = 0; i < length; ++i)
 	{
 		short *srcLeft = src;
 		short *srcRight = src + 1;
 		long long tmpLeft, tmpRight;
 
-		int startCoeff;
-		int n;
+		int half_size = (tapNum - 1) / 2;
 
 		// 1st 
-		tmpLeft = *srcLeft * coeff[mid];
-		tmpRight = *srcRight * coeff[mid];
+		tmpLeft = *srcLeft * coeff[half_size];
+		tmpRight = *srcRight * coeff[half_size];
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest);
 
-		// 2nd  current * [-1], current-1 * [-5], current-2 * [-9]
+		// 2nd 
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 1) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 1) / 8) * 2;
-		srcRight = srcLeft + 1;
-
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size ; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 1) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 1) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 1) * 2);
+			}
+			if ((1 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (1 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (1 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 2);
 
-		// 3rd  current * [-1], current-1 * [-5], current-2 * [-9]
+		// 3rd 
 		tmpLeft = 0;
 		tmpRight = 0;
-
-		startCoeff = (mid - 2) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 2) / 8) * 2;
-		srcRight = srcLeft + 1;
-
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 2) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 2) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 2) * 2);
+			}
+			if ((2 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (2 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (2 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 4);
 
 		// 4th
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 3) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 3) / 8) * 2;
-		srcRight = srcLeft + 1;
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 3) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 3) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 3) * 2);
+			}
+			if ((3 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (3 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (3 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 6);
 
 		//5th
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 4) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 4) / 8) * 2;
-		srcRight = srcLeft + 1;
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 4) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 4) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 4) * 2);
+			}
+			if ((4 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (4 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (4 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 8);
 
 		//6th
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 5) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 5) / 8) * 2;
-		srcRight = srcLeft + 1;
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 5) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 5) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 5) * 2);
+			}
+			if ((5 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (5 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (5 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 10);
 
 		//7th
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 6) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 6) / 8) * 2;
-		srcRight = srcLeft + 1;
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 6) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 6) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 6) * 2);
+			}
+			if ((6 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (6 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (6 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 12);
 
 		//8th
 		tmpLeft = 0;
 		tmpRight = 0;
-		startCoeff = (mid - 7) % 8;
-		n = (tapNum - startCoeff) / 8;
-		srcLeft = src - ((mid - 7) / 8) * 2;
-		srcRight = srcLeft + 1;
-		for (int j = 0; j < n; ++j)
+		for (int j = 0; j <= half_size; j += 8)
 		{
-			tmpLeft += coeff[startCoeff + j * 8] * (long long)*(srcLeft + j * 2);
-			tmpRight += coeff[startCoeff + j * 8] * (long long)*(srcRight + j * 2);
+			if ((j + 7) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size + j] * (long long)*(srcLeft + (j + 7) * 2);
+				tmpRight += coeff[half_size + j] * (long long)*(srcRight + (j + 7) * 2);
+			}
+			if ((7 - j) % 8 == 0)
+			{
+				tmpLeft += coeff[half_size - j] * (long long)*(srcLeft + (7 - j) * 2);
+				tmpRight += coeff[half_size - j] * (long long)*(srcRight + (7 - j) * 2);
+			}
 		}
 		writeRaw32bitPCM(tmpLeft, tmpRight, dest + 14);
 
@@ -351,33 +371,6 @@ unsigned int searchFmtDataChunk(wchar_t* fileName, WAVEFORMATEX* wf, DWORD* offs
 	return 0;
 }
 
-void* readWavFile(wchar_t* fileName)
-{
-	HANDLE fileHandle;
-	DWORD offset, size, readSize;
-	void* data;
-	WAVEFORMATEX wf;
-
-	if (!searchFmtDataChunk(fileName, &wf, &offset, &size))
-	{
-		return 0;
-	}
-
-	fileHandle = CreateFileW(fileName, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-	if (fileHandle == INVALID_HANDLE_VALUE)
-	{
-		return 0;
-	}
-
-	data = (void*) ::GlobalAlloc(GPTR, ((size + 15) / 16) * 16);
-
-	::SetFilePointer(fileHandle, offset, 0, FILE_CURRENT);
-	::ReadFile(fileHandle, data, size, &readSize, NULL);
-	::CloseHandle(fileHandle);
-
-	return data;
-}
-
 DWORD readWavFile(wchar_t* fileName, void* readMem, DWORD readPos, DWORD readLength)
 {
 	HANDLE fileHandle;
@@ -409,37 +402,6 @@ DWORD readWavFile(wchar_t* fileName, void* readMem, DWORD readPos, DWORD readLen
 	return readSize;
 }
 
-int writeWAV_header(HANDLE fileHandle, int ch, int freq, int depth, unsigned long dataSize)
-{
-	if (fileHandle == 0) return 0;
-	if (ch != 1 && ch != 2) return 0;
-	if (depth != 16 && depth != 24 && depth != 32) return 0;
-
-	WAVEFORMATEX wf;
-	wf.wFormatTag = 0x01; // 1:LPCM
-	wf.nChannels = ch;
-	wf.nSamplesPerSec = freq;
-	wf.nAvgBytesPerSec = freq * ((depth * ch) / 8);
-	wf.nBlockAlign = (depth * ch) / 8; // 4bytes (16bit, 2ch) per sample
-	wf.wBitsPerSample = depth;
-	wf.cbSize = 0;
-
-	DWORD writtenSize = 0;
-	WriteFile(fileHandle, "RIFF", 4, &writtenSize, NULL);
-	DWORD size = (dataSize + 44) - 8;
-	WriteFile(fileHandle, &size, 4, &writtenSize, NULL);
-	WriteFile(fileHandle, "WAVE", 4, &writtenSize, NULL);
-	WriteFile(fileHandle, "fmt ", 4, &writtenSize, NULL);
-	size = 16;
-	WriteFile(fileHandle, &size, 4, &writtenSize, NULL);
-	WriteFile(fileHandle, &wf, size, &writtenSize, NULL);
-	WriteFile(fileHandle, "data", 4, &writtenSize, NULL);
-	size = (DWORD)dataSize;
-	WriteFile(fileHandle, &size, 4, &writtenSize, NULL);
-
-	return 0;
-}
-
 static int writePCM352_32_header(HANDLE fileHandle, unsigned long dataSize)
 {
 	WAVEFORMATEX wf;
@@ -468,112 +430,15 @@ static int writePCM352_32_header(HANDLE fileHandle, unsigned long dataSize)
 }
 
 
-// X次 ノイズシェーパー 
-#define DEPTH_SHIFT 8
-void noiseShaper_24bitTo16bit(wchar_t* destFileName, void* data, int sample, WAVEFORMATEX* wf, int x)
-{
-	HANDLE fileHandle = CreateFileW(destFileName, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS /*CREATE_NEW*/, FILE_ATTRIBUTE_NORMAL, NULL);
-	writeWAV_header(fileHandle, 2, wf->nSamplesPerSec, 16, sample * 2 * 2);
-
-	short* data2 = (short*)::GlobalAlloc(GPTR, sample * 2 * 2);
-
-	BYTE* p = (BYTE*)data;
-	int left, right, add = 1 << (DEPTH_SHIFT - 1);
-	DWORD writtenSize;
-
-	int lastRight = 0;
-	int lastLeft = 0;
-	int outRight;
-	int outLeft;
-	long long sigmaLeft[32];
-	long long sigmaRight[32];
-
-	short n = -1;
-
-	for (int i = 0; i < 32; ++i)
-	{
-		sigmaLeft[i] = sigmaRight[i] = 0;
-	}
-
-	for (int i = 0; i < sample; ++i)
-	{
-		unsigned int tmp;
-		tmp = (p[2] << 16) | (p[1] << 8) | p[0];
-		if (tmp > 0x00800000)
-		{
-			left = (0x01000000 - tmp) * -1;
-		}
-		else left = (int)tmp;
-
-		tmp = (p[5] << 16) | (p[4] << 8) | p[3];
-		if (tmp > 0x00800000)
-		{
-			right = (0x01000000 - tmp) * -1;
-		}
-		else right = (int)tmp;
-
-		sigmaLeft[0] += left - lastLeft;
-		sigmaRight[0] += right - lastRight;
-		for (int j = 1; j < x; ++j)
-		{
-			sigmaLeft[j] += sigmaLeft[j - 1] - lastLeft;
-			sigmaRight[j] += sigmaRight[j - 1] - lastRight;
-		}
-
-		if (sigmaLeft[x - 1] >= 0)
-		{
-			outLeft = (sigmaLeft[x - 1] + add) >> DEPTH_SHIFT;
-			lastLeft = outLeft << 8;
-		}
-		else
-		{
-			outLeft = (sigmaLeft[x - 1] * -1 + add) >> DEPTH_SHIFT;
-			lastLeft = outLeft << 8;
-			outLeft *= -1;
-			lastLeft *= -1;
-		}
-
-		///// right
-		if (sigmaRight[x - 1] >= 0)
-		{
-			outRight = (sigmaRight[x - 1] + add) >> DEPTH_SHIFT;
-			lastRight = outRight << 8;
-		}
-		else
-		{
-			outRight = (sigmaRight[x - 1] * -1 + add) >> DEPTH_SHIFT;
-			lastRight = outRight << 8;
-			outRight *= -1;
-			lastRight *= -1;
-		}
-
-		if (outLeft > 32767) outLeft = 32767;
-		if (outLeft < -32768) outLeft = -32768;
-
-		if (outRight > 32767) outRight = 32767;
-		if (outRight < -32768) outRight = -32768;
-
-		data2[i * 2] = (short)outLeft;
-		data2[i * 2 + 1] = (short)outRight;
-
-		p += 6;
-	}
-
-	::WriteFile(fileHandle, data2, sample * 2 * 2, &writtenSize, NULL);
-	::FlushFileBuffers(fileHandle); // なくても大丈夫そう
-	::CloseHandle(fileHandle);
-
-	::GlobalFree(data2);
-}
 
 #define DATA_UNIT_SIZE (1024 * 1024)
-#define TAP_SIZE 4096
+#define TAP_SIZE 511
 
 int main()
 {
 	DWORD wavDataOffset, wavDataSize, readSize = 0;
 	WAVEFORMATEX wf;
-	wchar_t fileName[] = L"C:\\Test\\1k_174_24.wav";
+	wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
 	//wchar_t fileName[] = L"C:\\Test\\a001.WAV";
 	wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
 	DWORD writtenSize;
@@ -618,14 +483,3 @@ int main()
 
 	::GlobalFree(mem1);
 }
-
-// プログラムの実行: Ctrl + F5 または [デバッグ] > [デバッグなしで開始] メニュー
-// プログラムのデバッグ: F5 または [デバッグ] > [デバッグの開始] メニュー
-
-// 作業を開始するためのヒント: 
-//    1. ソリューション エクスプローラー ウィンドウを使用してファイルを追加/管理します 
-//   2. チーム エクスプローラー ウィンドウを使用してソース管理に接続します
-//   3. 出力ウィンドウを使用して、ビルド出力とその他のメッセージを表示します
-//   4. エラー一覧ウィンドウを使用してエラーを表示します
-//   5. [プロジェクト] > [新しい項目の追加] と移動して新しいコード ファイルを作成するか、[プロジェクト] > [既存の項目の追加] と移動して既存のコード ファイルをプロジェクトに追加します
-//   6. 後ほどこのプロジェクトを再び開く場合、[ファイル] > [開く] > [プロジェクト] と移動して .sln ファイルを選択します
