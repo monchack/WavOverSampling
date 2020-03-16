@@ -249,26 +249,6 @@ DWORD WINAPI ThreadFunc(LPVOID arg)
 	return 0;
 }
 
-int getFileSize(wchar_t* fileName, DWORD* sizeLow, DWORD* sizeHigh)
-{
-	HANDLE h;
-	DWORD dwSizeHigh;
-	DWORD dwSizeLow;
-	DWORD dwError;
-
-	if (sizeLow == 0 || sizeHigh == 0) return 0;
-	*sizeLow = *sizeHigh = 0;
-	h = CreateFileW(fileName, GENERIC_READ, 0, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-	if (h == INVALID_HANDLE_VALUE) return 0;
-	dwSizeLow = GetFileSize(h, &dwSizeHigh);
-	dwError = GetLastError();
-	CloseHandle(h);
-	if (dwSizeLow == 0xffffffff && dwError != NO_ERROR) return 0;
-	*sizeLow = dwSizeLow;
-	*sizeHigh = dwSizeHigh;
-	return 1;
-}
-
 unsigned int searchFmtDataChunk(wchar_t* fileName, WAVEFORMATEX* wf, DWORD* offset, DWORD* size)
 {
 	HANDLE fileHandle;
