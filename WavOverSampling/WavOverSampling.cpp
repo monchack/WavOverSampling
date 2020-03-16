@@ -423,11 +423,10 @@ static int writePCM352_32_header(HANDLE fileHandle, unsigned long dataSize)
 
 int main()
 {
-	DWORD wavDataOffset, wavDataSize, readSize = 0;
+	DWORD wavDataOffset, wavDataSize, writtenSize, length, readSize = 0;
 	WAVEFORMATEX wf;
 	wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
 	wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
-	DWORD writtenSize;
 
 	if (!searchFmtDataChunk(fileName, &wf, &wavDataOffset, &wavDataSize))
 	{
@@ -450,7 +449,7 @@ int main()
 
 	for (int i = 0; i <= part; ++i)
 	{
-		DWORD readSize;
+		length = readSize;
 		::CopyMemory(mem1, mem2, DATA_UNIT_SIZE);
 		::CopyMemory(mem2, mem3, DATA_UNIT_SIZE);
 		::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
@@ -459,7 +458,7 @@ int main()
 	
 		struct oversample_info info[8];
 		info[0].src = (short* )mem2;
-		info[0].length = DATA_UNIT_SIZE / 4;
+		info[0].length = length / 4;
 		info[0].coeff = firCoeff;
 		info[0].tapNum = TAP_SIZE;
 		info[0].dest = (int* )memOut;
@@ -481,7 +480,7 @@ int main()
 		WaitForMultipleObjects(8, thread, TRUE, INFINITE);
 		*/
 		
-		::WriteFile(fileOut, memOut, readSize * 8 * 2, &writtenSize, NULL);
+		::WriteFile(fileOut, memOut, length * 8 * 2, &writtenSize, NULL);
 
 	}
 	std::cout << "WavOverSampling: Completed.\n";
