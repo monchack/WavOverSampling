@@ -468,9 +468,6 @@ int main()
 	long long* firCoeff = (long long*)::GlobalAlloc(GPTR, sizeof(long long) * TAP_SIZE);
 	createHannCoeff(TAP_SIZE, firCoeff);
 
-	::SecureZeroMemory(mem2, DATA_UNIT_SIZE);
-	::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
-
 	for (int i = 0; i <= part; ++i)
 	{
 		DWORD readSize;
