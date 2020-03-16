@@ -27,12 +27,12 @@ void createHannCoeff(int tapNum, long long* dest)
 	int tapNumMed = ((tapNum - 1) / 2) + 1;
 	int coeffNum = (tapNum + 1) / 2;
 
-	long long scale = 1LL << (COEFF_SCALE + 3);
+	long long scale = 1LL << (COEFF_SCALE + 3); // 8x (2^3) oversampling
 
 	for (int i = 1; i < coeffNum; ++i)
 	{
 		cpp_dec_float_100 piq = pi<cpp_dec_float_100>();
-		cpp_dec_float_100 x = (piq * i) / 8;   // 2pi *  (1/16)
+		cpp_dec_float_100 x = (piq * i) / 8;   // 2pi *  (1/16) ;  1/16 =  22050/352800
 
 		//float128 coeff = (float128)1.0 / (piq * i) * sin(x);
 		cpp_dec_float_100 coeff = 1 / (piq * i) * sin(x);
@@ -468,15 +468,18 @@ int main()
 	long long* firCoeff = (long long*)::GlobalAlloc(GPTR, sizeof(long long) * TAP_SIZE);
 	createHannCoeff(TAP_SIZE, firCoeff);
 
-	for (int i = 0; i < part; ++i)
+	::SecureZeroMemory(mem2, DATA_UNIT_SIZE);
+	::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
+
+	for (int i = 0; i <= part; ++i)
 	{
 		DWORD readSize;
-		if (i != 0)        readWavFile(fileName, mem1, DATA_UNIT_SIZE * (i - 1), DATA_UNIT_SIZE);
-		else ::SecureZeroMemory(mem1, DATA_UNIT_SIZE);
-		readSize =         readWavFile(fileName, mem2, DATA_UNIT_SIZE * i,       DATA_UNIT_SIZE);
-		if (i != part - 1) readWavFile(fileName, mem3, DATA_UNIT_SIZE * (i + 1), DATA_UNIT_SIZE);
-		else ::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
-
+		::CopyMemory(mem1, mem2, DATA_UNIT_SIZE);
+		::CopyMemory(mem2, mem3, DATA_UNIT_SIZE);
+		::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
+		if (i != part) readSize = readWavFile(fileName, mem3, DATA_UNIT_SIZE * i, DATA_UNIT_SIZE);
+		if (i == 0) continue;
+	
 		struct oversample_info info[8];
 		info[0].src = (short* )mem2;
 		info[0].length = DATA_UNIT_SIZE / 4;
