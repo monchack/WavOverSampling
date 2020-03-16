@@ -472,8 +472,10 @@ int main()
 	{
 		DWORD readSize;
 		if (i != 0)        readWavFile(fileName, mem1, DATA_UNIT_SIZE * (i - 1), DATA_UNIT_SIZE);
+		else ::SecureZeroMemory(mem1, DATA_UNIT_SIZE);
 		readSize =         readWavFile(fileName, mem2, DATA_UNIT_SIZE * i,       DATA_UNIT_SIZE);
 		if (i != part - 1) readWavFile(fileName, mem3, DATA_UNIT_SIZE * (i + 1), DATA_UNIT_SIZE);
+		else ::SecureZeroMemory(mem3, DATA_UNIT_SIZE);
 
 		struct oversample_info info[8];
 		info[0].src = (short* )mem2;
@@ -481,14 +483,13 @@ int main()
 		info[0].coeff = firCoeff;
 		info[0].tapNum = TAP_SIZE;
 		info[0].dest = (int* )memOut;
-		info[0].option = 0x0001;
+		info[0].option = 0;
 		
-		// Sigle thread
-		info[0].option = 0xffff;
+		// Single thread
 		ThreadFunc((LPVOID)&info[0]);
 
 		/*
-		// Multi thread (use code below instead of above 2 lines)
+		// Multi thread (use code below instead of above)
 		HANDLE thread[8];
 		DWORD threadId[8];
 		for (int i = 0; i < 8; ++i)
