@@ -428,6 +428,8 @@ int main()
 	wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
 	wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
 
+	ULONGLONG elapsedTime = GetTickCount64();
+
 	if (!searchFmtDataChunk(fileName, &wf, &wavDataOffset, &wavDataSize))
 	{
 		return 0;
@@ -483,7 +485,8 @@ int main()
 		::WriteFile(fileOut, memOut, length * 8 * 2, &writtenSize, NULL);
 
 	}
-	std::cout << "WavOverSampling: Completed.\n";
+	elapsedTime = GetTickCount64() - elapsedTime;
+	std::cout << "WavOverSampling: Completed.   " << (elapsedTime/1000) << "." << (elapsedTime % 1000) <<  " msec  \n";
 
 	::FlushFileBuffers(fileOut);
 	::CloseHandle(fileOut);
