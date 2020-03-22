@@ -75,13 +75,13 @@ void createHannCoeff(int tapNum, long long* dest)
 	for (int i = 1; i < coeffNum; ++i)
 	{
 		cpp_dec_float_100 x = i * 2 * piq * 22050 / 352800;
-		coeff1[i] = sin(x) / (piq * i);
+		coeff1[i] = boost::multiprecision::sin(x) / (piq * i);
 	}
 
 	for (int i = 0; i < coeffNum; ++i)
 	{
 		cpp_dec_float_100 x = 2.0 * piq * i / (tapNum - 1);
-		coeff2[i] = 0.5 + 0.5 * cos(x);
+		coeff2[i] = 0.5 + 0.5 * boost::multiprecision::cos(x);
 	}
 	coeff2[coeffNum - 1] = 0;
 
@@ -89,7 +89,7 @@ void createHannCoeff(int tapNum, long long* dest)
 
 	for (int i = 0; i < coeffNum; ++i)
 	{
-		coeff3[i] = round(coeff1[i] * coeff2[i] * scale);
+		coeff3[i] = boost::multiprecision::round(coeff1[i] * coeff2[i] * scale);
 	}
 
 	dest[coeffNum - 1] = (long long)coeff3[0];
