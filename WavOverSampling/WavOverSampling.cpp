@@ -5,58 +5,105 @@
 
 #include <Windows.h>
 
-#include <boost/multiprecision/cpp_dec_float.hpp>
-
-#if defined(BOOST_VERSION)
-namespace mp = boost::multiprecision;
-using boost::math::constants::pi;
-#endif
+// reomve comment out below to use Boost
+//#include <boost/multiprecision/cpp_dec_float.hpp>
 
 #define TAP_SIZE 4095
-
 #define DATA_UNIT_SIZE (1024 * 1024)
 
 // 16(15+1)bit  X  scale: 48(47+1)bit =  63(62+1)bit -> 32bit (31bit shift)
 #define COEFF_SCALE 47
 #define SCALE_SHIFT 31
 
+#if !defined(BOOST_VERSION)
+
 void createHannCoeff(int tapNum, long long* dest)
 {
-	using namespace boost::multiprecision;
-
-	int tapNumMed = ((tapNum - 1) / 2) + 1;
 	int coeffNum = (tapNum + 1) / 2;
+	double* coeff1 = (double*)::GlobalAlloc(GPTR, sizeof(double) * coeffNum);
+	double* coeff2 = (double*)::GlobalAlloc(GPTR, sizeof(double) * coeffNum);
+	double* coeff3 = (double*)::GlobalAlloc(GPTR, sizeof(double) * coeffNum);
+	double pi = 3.141592653589793;
 
-	long long scale = 1LL << (COEFF_SCALE + 3); // 8x (2^3) oversampling
-
+	coeff1[0] = 2.0f * (22050.0f / 352800.0f);
 	for (int i = 1; i < coeffNum; ++i)
 	{
-		cpp_dec_float_100 piq = pi<cpp_dec_float_100>();
-		cpp_dec_float_100 x = (piq * i) / 8;   // 2pi *  (1/16) ;  1/16 =  22050/352800
-
-		//float128 coeff = (float128)1.0 / (piq * i) * sin(x);
-		cpp_dec_float_100 coeff = 1 / (piq * i) * sin(x);
-
-		//float128 hamming = 0.5 + 0.5*cos((i * piq) / (tapNumMed - 1));
-		cpp_dec_float_100 a = i;
-		cpp_dec_float_100 b = tapNumMed - 1;
-		cpp_dec_float_100 hann("0.5");
-		a *= piq;
-		a /= b;
-		a = cos(a);
-		hann = hann * a + hann;
-
-		//float128 coeffAfterWin = coeff * hann * scale;
-		cpp_dec_float_100 coeffAfterWin = scale;
-		coeffAfterWin = coeffAfterWin * hann * coeff;
-		coeffAfterWin = round(coeffAfterWin);
-
-		dest[coeffNum - 1 + i] = (long long)coeffAfterWin; // 2 ^ 30
-		dest[coeffNum - 1 - i] = (long long)coeffAfterWin;
+		double x = i * 2.0f * pi * (22050.0f / 352800.0f);
+		coeff1[i] = sin(x) / (pi * i);
 	}
 
-	dest[coeffNum - 1] = 1LL << COEFF_SCALE;
+	for (int i = 0; i < coeffNum; ++i)
+	{
+		double x = 2.0f * pi * i / (double)(tapNum - 1);
+		coeff2[i] = 0.5f + 0.5f * cos(x);
+	}
+	coeff2[coeffNum - 1] = 0;
+
+	long long scale = 1LL << (COEFF_SCALE + 3);
+
+	for (int i = 0; i < coeffNum; ++i)
+	{
+		coeff3[i] = round(coeff1[i] * coeff2[i] * scale);
+	}
+
+	dest[coeffNum - 1] = (long long)coeff3[0];
+	for (int i = 1; i < coeffNum; ++i)
+	{
+		dest[coeffNum - 1 + i] = (long long)coeff3[i];
+		dest[coeffNum - 1 - i] = (long long)coeff3[i];
+	}
+	::GlobalFree(coeff1);
+	::GlobalFree(coeff2);
+	::GlobalFree(coeff3);
 }
+
+#else
+
+using namespace boost::multiprecision;
+using boost::math::constants::pi;
+
+void createHannCoeff(int tapNum, long long* dest)
+{
+	int coeffNum = (tapNum + 1) / 2;
+	cpp_dec_float_100* coeff1 = (cpp_dec_float_100*)::GlobalAlloc(GPTR, sizeof(cpp_dec_float_100) * coeffNum);
+	cpp_dec_float_100* coeff2 = (cpp_dec_float_100*)::GlobalAlloc(GPTR, sizeof(cpp_dec_float_100) * coeffNum);
+	cpp_dec_float_100* coeff3 = (cpp_dec_float_100*)::GlobalAlloc(GPTR, sizeof(cpp_dec_float_100) * coeffNum);
+
+	cpp_dec_float_100 piq = pi<cpp_dec_float_100>();
+
+	coeff1[0] = 2.0f * (22050.0f / 352800.0f);
+	for (int i = 1; i < coeffNum; ++i)
+	{
+		cpp_dec_float_100 x = i * 2 * piq * 22050 / 352800;
+		coeff1[i] = sin(x) / (piq * i);
+	}
+
+	for (int i = 0; i < coeffNum; ++i)
+	{
+		cpp_dec_float_100 x = 2.0 * piq * i / (tapNum - 1);
+		coeff2[i] = 0.5 + 0.5 * cos(x);
+	}
+	coeff2[coeffNum - 1] = 0;
+
+	long long scale = 1LL << (COEFF_SCALE + 3);
+
+	for (int i = 0; i < coeffNum; ++i)
+	{
+		coeff3[i] = round(coeff1[i] * coeff2[i] * scale);
+	}
+
+	dest[coeffNum - 1] = (long long)coeff3[0];
+	for (int i = 1; i < coeffNum; ++i)
+	{
+		dest[coeffNum - 1 + i] = (long long)coeff3[i];
+		dest[coeffNum - 1 - i] = (long long)coeff3[i];
+	}
+	::GlobalFree(coeff1);
+	::GlobalFree(coeff2);
+	::GlobalFree(coeff3);
+}
+
+#endif
 
 static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 {
@@ -467,17 +514,17 @@ int main()
 		info[0].option = 0;
 		
 		// Single thread
-		ThreadFunc((LPVOID)&info[0]);
+		//ThreadFunc((LPVOID)&info[0]);
 
 		/*
 		// Multi thread (use code below instead of above)
 		HANDLE thread[8];
 		DWORD threadId[8];
-		for (int i = 0; i < 8; ++i)
+		for (int j = 0; j < 8; ++j)
 		{
-			info[i] = info[0];
-			info[i].option = 1 << i;
-			thread[i] = CreateThread(NULL, 0, ThreadFunc, (LPVOID)&info[i], 0, &threadId[i]);
+			info[j] = info[0];
+			info[j].option = 1 << j;
+			thread[j] = CreateThread(NULL, 0, ThreadFunc, (LPVOID)&info[j], 0, &threadId[j]);
 		}
 		WaitForMultipleObjects(8, thread, TRUE, INFINITE);
 		*/
