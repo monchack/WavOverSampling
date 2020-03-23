@@ -514,7 +514,7 @@ int main()
 		info[0].option = 0;
 		
 		// Single thread
-		//ThreadFunc((LPVOID)&info[0]);
+		ThreadFunc((LPVOID)&info[0]);
 
 		/*
 		// Multi thread (use code below instead of above)
