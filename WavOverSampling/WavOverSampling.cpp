@@ -21,7 +21,10 @@
 // reomve comment out below to use Boost
 //#include <boost/multiprecision/cpp_dec_float.hpp>
 
+// Tap size; change this number if necessary
 #define TAP_SIZE 4095
+
+
 #define DATA_UNIT_SIZE (1024 * 1024)
 
 // 16(15+1)bit  X  scale: 48(47+1)bit =  63(62+1)bit -> 32bit (31bit shift)
