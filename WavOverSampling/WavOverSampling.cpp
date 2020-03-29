@@ -22,7 +22,7 @@
 //#include <boost/multiprecision/cpp_dec_float.hpp>
 
 // Tap size; change this number if necessary
-#define TAP_SIZE 4095
+#define TAP_SIZE 16383
 
 
 #define DATA_UNIT_SIZE (1024 * 1024)
@@ -139,6 +139,7 @@ static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 }
 
 
+
 int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, int* dest, unsigned int option)
 {
 	int half_size = (tapNum - 1) / 2;
@@ -168,7 +169,7 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			for (int j = 1; (j * 8 - 1) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 1];
-				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 1];
+				tmpRight += (long long)*(srcRight + j * 2) *coeff[half_size + j * 8 - 1];
 			}
 			for (int j = 0; (j * 8 + 1) <= half_size; ++j)
 			{
@@ -484,12 +485,18 @@ static int writePCM352_32_header(HANDLE fileHandle, unsigned long dataSize)
 	return 0;
 }
 
-int main()
+int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 {
 	DWORD wavDataOffset, wavDataSize, writtenSize, length, readSize = 0;
 	WAVEFORMATEX wf;
-	wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
-	wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
+	//wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
+	//wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
+	wchar_t* fileName;
+	wchar_t* destFileName;
+
+	if (argc < 2) return 0;
+	fileName = argv[1];
+	destFileName = argv[2];
 
 	ULONGLONG elapsedTime = GetTickCount64();
 
@@ -514,6 +521,8 @@ int main()
 
 	for (int i = 0; i <= part; ++i)
 	{
+		::SetThreadExecutionState(ES_SYSTEM_REQUIRED);
+		
 		length = readSize;
 		::CopyMemory(mem1, mem2, DATA_UNIT_SIZE);
 		::CopyMemory(mem2, mem3, DATA_UNIT_SIZE);
@@ -531,9 +540,9 @@ int main()
 		
 		// Single thread
 		ThreadFunc((LPVOID)&info[0]);
-
-		/*
+		
 		// Multi thread (use code below instead of above)
+		/*
 		HANDLE thread[8];
 		DWORD threadId[8];
 		for (int j = 0; j < 8; ++j)
@@ -542,14 +551,14 @@ int main()
 			info[j].option = 1 << j;
 			thread[j] = CreateThread(NULL, 0, ThreadFunc, (LPVOID)&info[j], 0, &threadId[j]);
 		}
-		WaitForMultipleObjects(8, thread, TRUE, INFINITE);
+		::WaitForMultipleObjects(8, thread, TRUE, INFINITE);
 		*/
-		
-		::WriteFile(fileOut, memOut, length * 8 * 2, &writtenSize, NULL);
 
+		::WriteFile(fileOut, memOut, length * 8 * 2, &writtenSize, NULL);
+		std::cout << "WavOverSampling: Progress  " << (i * 100) / part << " %\r";
 	}
 	elapsedTime = GetTickCount64() - elapsedTime;
-	std::cout << "WavOverSampling: Completed.   " << (elapsedTime/1000) << "." << (elapsedTime % 1000) <<  " msec  \n";
+	std::cout << "\nWavOverSampling: Completed.   " << (elapsedTime/1000) << "." << (elapsedTime % 1000) <<  " sec  \n";
 
 	::FlushFileBuffers(fileOut);
 	::CloseHandle(fileOut);
@@ -557,4 +566,5 @@ int main()
 	::GlobalFree(mem1);
 	::GlobalFree(memOut);
 	::GlobalFree(firCoeff);
+	return 0;
 }
