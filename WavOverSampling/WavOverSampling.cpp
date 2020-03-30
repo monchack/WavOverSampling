@@ -21,9 +21,8 @@
 // reomve comment out below to use Boost
 //#include <boost/multiprecision/cpp_dec_float.hpp>
 
-// Tap size; change this number if necessary
+// Tap size; change this number if necessary. Must be an odd number
 #define TAP_SIZE 16383
-
 
 #define DATA_UNIT_SIZE (1024 * 1024)
 
@@ -124,6 +123,12 @@ void createHannCoeff(int tapNum, long long* dest)
 static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 {
 	int shift = SCALE_SHIFT;
+
+	int add = 1 >> (shift - 1);
+	if (left >= 0) left += add;
+	else left -= add;
+	if (right >= 0) right += add;
+	else right -= add;
 
 	if (left >= 4611686018427387904) left = 4611686018427387904 - 1; // over 63bit : limitted to under [1 << 62]   62bit + 1bit
 	if (right >= 4611686018427387904) right = 4611686018427387904 - 1;
@@ -489,8 +494,6 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 {
 	DWORD wavDataOffset, wavDataSize, writtenSize, length, readSize = 0;
 	WAVEFORMATEX wf;
-	//wchar_t fileName[] = L"C:\\Test\\1k_44_16.wav";
-	//wchar_t destFileName[] = L"C:\\Test\\out2.WAV";
 	wchar_t* fileName;
 	wchar_t* destFileName;
 
