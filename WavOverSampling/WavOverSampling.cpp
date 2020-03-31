@@ -24,6 +24,9 @@
 // Tap size; change this number if necessary. Must be an odd number
 #define TAP_SIZE 16383
 
+// remove comment out below to enable high precision mode
+//#define HIGH_PRECISION 1
+
 #define DATA_UNIT_SIZE (1024 * 1024)
 
 // 16(15+1)bit  X  scale: 48(47+1)bit =  63(62+1)bit -> 32bit (31bit shift)
@@ -32,7 +35,7 @@
 
 #if !defined(BOOST_VERSION)
 
-void createHannCoeff(int tapNum, long long* dest)
+void createHannCoeff(int tapNum, long long* dest, double* dest2)
 {
 	int coeffNum = (tapNum + 1) / 2;
 	double* coeff1 = (double*)::GlobalAlloc(GPTR, sizeof(double) * coeffNum);
@@ -58,14 +61,17 @@ void createHannCoeff(int tapNum, long long* dest)
 
 	for (int i = 0; i < coeffNum; ++i)
 	{
-		coeff3[i] = round(coeff1[i] * coeff2[i] * scale);
+		coeff3[i] = coeff1[i] * coeff2[i] * scale;
 	}
 
-	dest[coeffNum - 1] = (long long)coeff3[0];
+	dest[coeffNum - 1] = (long long)round(coeff3[0]);
+	dest2[coeffNum - 1] = (double)(coeff3[0] - round(coeff3[0]));
 	for (int i = 1; i < coeffNum; ++i)
 	{
-		dest[coeffNum - 1 + i] = (long long)coeff3[i];
-		dest[coeffNum - 1 - i] = (long long)coeff3[i];
+		dest[coeffNum - 1 + i] = (long long)round(coeff3[i]);
+		dest[coeffNum - 1 - i] = (long long)round(coeff3[i]);
+		dest2[coeffNum - 1 + i] = (double)(coeff3[i] - round(coeff3[i]));
+		dest2[coeffNum - 1 - i] = (double)(coeff3[i] - round(coeff3[i]));
 	}
 	::GlobalFree(coeff1);
 	::GlobalFree(coeff2);
@@ -77,7 +83,7 @@ void createHannCoeff(int tapNum, long long* dest)
 using namespace boost::multiprecision;
 using boost::math::constants::pi;
 
-void createHannCoeff(int tapNum, long long* dest)
+void createHannCoeff(int tapNum, long long* dest, double* dest2)
 {
 	int coeffNum = (tapNum + 1) / 2;
 	cpp_dec_float_100* coeff1 = (cpp_dec_float_100*)::GlobalAlloc(GPTR, sizeof(cpp_dec_float_100) * coeffNum);
@@ -104,14 +110,19 @@ void createHannCoeff(int tapNum, long long* dest)
 
 	for (int i = 0; i < coeffNum; ++i)
 	{
-		coeff3[i] = boost::multiprecision::round(coeff1[i] * coeff2[i] * scale);
+		coeff3[i] = coeff1[i] * coeff2[i] * scale;
+		//coeff3[i] = boost::multiprecision::round(coeff1[i] * coeff2[i] * scale);
 	}
 
-	dest[coeffNum - 1] = (long long)coeff3[0];
+	dest[coeffNum - 1] = (long long)boost::multiprecision::round(coeff3[0]);
+	dest2[coeffNum - 1] = (double)(coeff3[0] - boost::multiprecision::round(coeff3[0]));
 	for (int i = 1; i < coeffNum; ++i)
 	{
-		dest[coeffNum - 1 + i] = (long long)coeff3[i];
-		dest[coeffNum - 1 - i] = (long long)coeff3[i];
+		cpp_dec_float_100 x = boost::multiprecision::round(coeff3[i]);
+		dest[coeffNum - 1 + i] = (long long)x;
+		dest[coeffNum - 1 - i] = (long long)x;
+		dest2[coeffNum - 1 + i] = (double)(coeff3[i] - x);
+		dest2[coeffNum - 1 - i] = (double)(coeff3[i] - x);
 	}
 	::GlobalFree(coeff1);
 	::GlobalFree(coeff2);
@@ -145,7 +156,7 @@ static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 
 
 
-int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, int* dest, unsigned int option)
+int  oversample(short* src, unsigned int length, long long* coeff, double* coeff2, int tapNum, int* dest, unsigned int option)
 {
 	int half_size = (tapNum - 1) / 2;
 	if (option == 0) option = 0xffff;
@@ -155,6 +166,7 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 		short *srcLeft = src;
 		short *srcRight = src + 1;
 		long long tmpLeft, tmpRight;
+		double tmpLeft2, tmpRight2;
 
 		if (option & 0x0001)
 		{
@@ -169,18 +181,32 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			// 2nd 
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			// src[1] * coeff[ 7]  +  src[ 2] * coeff[15]  +  src[ 3] * coeff[ 23]  + ...    
 			// src[0] * coeff[-1]  +  src[-1] * coeff[-9]  +  src[-2] * coeff[-17]  + ...
 			for (int j = 1; (j * 8 - 1) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 1];
 				tmpRight += (long long)*(srcRight + j * 2) *coeff[half_size + j * 8 - 1];
+
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 1];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 1];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 1) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 1];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 1];
+
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 1];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 1];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 2);
 		}
 
@@ -189,18 +215,30 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			// 3rd 
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			// src[1] * coeff[ 6]  +  src[ 2] * coeff[ 14]  +  src[ 3] * coeff[ 22]  + ...    
 			// src[0] * coeff[-2]  +  src[-1] * coeff[-10]  +  src[-2] * coeff[-18]  + ...
 			for (int j = 1; (j * 8 - 2) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 2];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 2];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 2];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 2];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 2) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 2];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 2];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 2];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 2];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 4);
 		}
 
@@ -209,16 +247,28 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			// 4th
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			for (int j = 1; (j * 8 - 3) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 3];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 3];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 3];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 3];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 3) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 3];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 3];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 3];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 3];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 6);
 		}
 
@@ -227,16 +277,28 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			//5th
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			for (int j = 1; (j * 8 - 4) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 4];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 4];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 4];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 4];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 4) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 4];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 4];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 4];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 4];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 8);
 		}
 
@@ -245,16 +307,28 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			//6th
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			for (int j = 1; (j * 8 - 5) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 5];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 5];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 5];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 5];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 5) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 5];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 5];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 5];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 5];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 10);
 		}
 
@@ -263,16 +337,28 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			//7th
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			for (int j = 1; (j * 8 - 6) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 6];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 6];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 6];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 6];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 6) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 6];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 6];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 6];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 6];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 12);
 		}
 	
@@ -281,16 +367,28 @@ int  oversample(short* src, unsigned int length, long long* coeff, int tapNum, i
 			//8th
 			tmpLeft = 0;
 			tmpRight = 0;
+			tmpLeft2 = 0.0;
+			tmpRight2 = 0.0;
 			for (int j = 1; (j * 8 - 7) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft + j * 2) * coeff[half_size + j * 8 - 7];
 				tmpRight += (long long)*(srcRight + j * 2) * coeff[half_size + j * 8 - 7];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft + j * 2) * coeff2[half_size + j * 8 - 7];
+				tmpRight2 += (double)*(srcRight + j * 2) *coeff2[half_size + j * 8 - 7];
+				#endif
 			}
 			for (int j = 0; (j * 8 + 7) <= half_size; ++j)
 			{
 				tmpLeft += (long long)*(srcLeft - j * 2) * coeff[half_size - j * 8 - 7];
 				tmpRight += (long long)*(srcRight - j * 2) * coeff[half_size - j * 8 - 7];
+				#if defined(HIGH_PRECISION)
+				tmpLeft2 += (double)*(srcLeft - j * 2) * coeff2[half_size - j * 8 - 7];
+				tmpRight2 += (double)*(srcRight - j * 2) *coeff2[half_size - j * 8 - 7];
+				#endif
 			}
+			tmpLeft += (long long)tmpLeft2;
+			tmpRight += (long long)tmpRight2;
 			writeRaw32bitPCM(tmpLeft, tmpRight, dest + 14);
 		}
 
@@ -306,6 +404,7 @@ struct oversample_info
 	short* src;
 	unsigned int length;
 	long long* coeff;
+	double* coeff2;
 	int tapNum;
 	int* dest;
 	unsigned int option;
@@ -314,7 +413,7 @@ struct oversample_info
 DWORD WINAPI ThreadFunc(LPVOID arg)
 {
 	struct oversample_info* info = (struct oversample_info*)arg;
-	oversample(info->src, info->length, info->coeff, info->tapNum, info->dest, info->option);
+	oversample(info->src, info->length, info->coeff, info->coeff2, info->tapNum, info->dest, info->option);
 	return 0;
 }
 
@@ -520,7 +619,8 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 	writePCM352_32_header(fileOut, wavDataSize * 8 * 2);
 
 	long long* firCoeff = (long long*)::GlobalAlloc(GPTR, sizeof(long long) * TAP_SIZE);
-	createHannCoeff(TAP_SIZE, firCoeff);
+	double* firCoeff2 = (double*)::GlobalAlloc(GPTR, sizeof(double) * TAP_SIZE);
+	createHannCoeff(TAP_SIZE, firCoeff, firCoeff2);
 
 	for (int i = 0; i <= part; ++i)
 	{
@@ -537,6 +637,7 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 		info[0].src = (short* )mem2;
 		info[0].length = length / 4;
 		info[0].coeff = firCoeff;
+		info[0].coeff2 = firCoeff2;
 		info[0].tapNum = TAP_SIZE;
 		info[0].dest = (int* )memOut;
 		info[0].option = 0;
@@ -569,5 +670,6 @@ int wmain(int argc, wchar_t *argv[], wchar_t *envp[])
 	::GlobalFree(mem1);
 	::GlobalFree(memOut);
 	::GlobalFree(firCoeff);
+	::GlobalFree(firCoeff2);
 	return 0;
 }
