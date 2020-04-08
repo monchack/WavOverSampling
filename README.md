@@ -6,5 +6,6 @@ Also high precision mode can be easily enabled by modifying the code.
 Input wav file must be 44.1/16bit/Stereo audio file.
 Output wav file's audio format is fixed; 352.8/32bit/Stereo.
 
+## Usage
 usage:
 WavOverSampling.exe  inputfile.wav  outputfile.wav
