@@ -92,17 +92,17 @@ void createHannCoeff(int tapNum, long long* dest, double* dest2)
 
 	cpp_dec_float_100 piq = pi<cpp_dec_float_100>();
 
-	coeff1[0] = 2.0f * (22050.0f / 352800.0f);
+	coeff1[0] = cpp_dec_float_100(2) * 22050 / 352800;
 	for (int i = 1; i < coeffNum; ++i)
 	{
-		cpp_dec_float_100 x = i * 2 * piq * 22050 / 352800;
+		cpp_dec_float_100 x = cpp_dec_float_100(i) * 2 * piq * 22050 / 352800;
 		coeff1[i] = boost::multiprecision::sin(x) / (piq * i);
 	}
 
 	for (int i = 0; i < coeffNum; ++i)
 	{
-		cpp_dec_float_100 x = 2.0 * piq * i / (tapNum - 1);
-		coeff2[i] = 0.5 + 0.5 * boost::multiprecision::cos(x);
+		cpp_dec_float_100 x = cpp_dec_float_100(2) * piq * i / (tapNum - 1);
+		coeff2[i] = cpp_dec_float_100("0.5") + cpp_dec_float_100("0.5") * boost::multiprecision::cos(x);
 	}
 	coeff2[coeffNum - 1] = 0;
 
@@ -135,7 +135,7 @@ static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 {
 	int shift = SCALE_SHIFT;
 
-	int add = 1 >> (shift - 1);
+	int add = 1 << (shift - 1);
 	if (left >= 0) left += add;
 	else left -= add;
 	if (right >= 0) right += add;
