@@ -134,12 +134,19 @@ void createHannCoeff(int tapNum, long long* dest, double* dest2)
 static void writeRaw32bitPCM(long long left, long long right, int* buffer)
 {
 	int shift = SCALE_SHIFT;
+	int x = -1 << shift;
 
 	int add = 1 << (shift - 1);
 	if (left >= 0) left += add;
-	else left -= add;
+	else
+	{
+		if (left > x) left = 0;
+	}
 	if (right >= 0) right += add;
-	else right -= add;
+	else
+	{
+		if (right > x) right = 0;
+	}
 
 	if (left >= 4611686018427387904) left = 4611686018427387904 - 1; // over 63bit : limitted to under [1 << 62]   62bit + 1bit
 	if (right >= 4611686018427387904) right = 4611686018427387904 - 1;
@@ -440,7 +447,7 @@ unsigned int searchFmtDataChunk(wchar_t* fileName, WAVEFORMATEX* wf, DWORD* offs
 		return 0;
 	}
 
-	if (header[0] != 0X46464952)
+	if (header[0] != 0x46464952)
 	{
 		// not "RIFF"
 		CloseHandle(fileHandle);
@@ -471,7 +478,7 @@ unsigned int searchFmtDataChunk(wchar_t* fileName, WAVEFORMATEX* wf, DWORD* offs
 		}
 		pos += 8;
 
-		if (header[0] == 0X20746d66)
+		if (header[0] == 0x20746d66)
 		{
 			// "fmt "
 			if (header[1] >= 16)
@@ -494,7 +501,7 @@ unsigned int searchFmtDataChunk(wchar_t* fileName, WAVEFORMATEX* wf, DWORD* offs
 				pos += header[1];
 			}
 		}
-		else if (header[0] == 0X61746164)
+		else if (header[0] == 0x61746164)
 		{
 			// "data"
 			dataFound = true;
